@@ -6,6 +6,7 @@ export class TokenOptimizer {
   }
 
   getCacheKey(message) {
+    // استخدام hash كامل للرسالة
     const normalized = message.toLowerCase().trim();
     
     let hash = 0;
@@ -15,6 +16,7 @@ export class TokenOptimizer {
       hash = hash & hash;
     }
     
+    // دمج hash مع أول 30 حرف
     return `${hash}_${normalized.substring(0, 30)}`;
   }
 
@@ -25,8 +27,9 @@ export class TokenOptimizer {
       const cached = this.cache.get(key);
       const age = Date.now() - cached.timestamp;
       
+      // Cache expires after 5 minutes
       if (age < 300000) {
-        console.log('💰 Cache hit!');
+        console.log('💰 Cache hit - توفير 100%!');
         return {
           fromCache: true,
           response: cached.response,
@@ -67,19 +70,6 @@ export class TokenOptimizer {
       }
       return msg;
     });
-  }
-
-  // الاسم الصحيح الذي يستخدمه server.js
-  createOptimizedSystemPrompt(context, toolsEnabled) {
-    const enabledToolsList = toolsEnabled.join(', ');
-    
-    return `أنت AI Agent لمنصة DevOps على Raspberry Pi.
-
-القدرات المتاحة: ${enabledToolsList}
-
-${context ? `السياق: ${context.substring(0, 500)}` : ''}
-
-الرد: موجز، دقيق، بالعربية.`;
   }
 
   getStats() {

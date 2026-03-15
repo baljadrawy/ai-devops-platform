@@ -8,7 +8,6 @@ import { CodeAnalysisPlugin } from './plugins/CodeAnalyzer.js';
 import { MemorySystem } from './plugins/MemorySystem.js';
 import { TelegramBotPlugin } from './plugins/TelegramBot.js';
 import { FileSystemPlugin } from './plugins/FileSystemPlugin.js';
-import { TokenOptimizer } from './plugins/TokenOptimizer.js';
 
 const app = express();
 app.use(cors());
@@ -25,7 +24,6 @@ const codeAnalyzer = new CodeAnalysisPlugin();
 const memory = new MemorySystem('./data/memory.db');
 const telegram = new TelegramBotPlugin(process.env.TELEGRAM_BOT_TOKEN);
 const filesystem = new FileSystemPlugin();
-const tokenOptimizer = new TokenOptimizer();
 
 // ==================== Memory Management ====================
 setInterval(async () => {
@@ -60,7 +58,7 @@ setInterval(() => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
-    version: '3.1.0',
+    version: '3.0.0',
     timestamp: new Date().toISOString(),
     features: {
       compression: 'active',
@@ -89,15 +87,6 @@ app.get('/api/stats', (req, res) => {
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
-// ✅ فحص Cache
-    const cacheResult = tokenOptimizer.checkCache(message);
-    if (cacheResult.fromCache) {
-      return res.json({
-        message: cacheResult.response,
-        fromCache: true,
-        tokensSaved: cacheResult.tokensSaved
-      });
-    }
     
     const userTokens = memory.estimateTokens(message);
     memory.saveMessage(sessionId, 'user', message, userTokens);
@@ -227,9 +216,6 @@ ${systemContext}
     const assistantTokens = memory.estimateTokens(assistantMessage);
     
     memory.saveMessage(sessionId, 'assistant', assistantMessage, assistantTokens);
-// ✅ حفظ في Cache
-    const tokensUsed = (response.usage.input_tokens || 0) + (response.usage.output_tokens || 0);
-    tokenOptimizer.saveToCache(message, assistantMessage, tokensUsed);
     
     res.json({
       message: assistantMessage,
