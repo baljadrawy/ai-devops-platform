@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>منصة AI DevOps</title>
+    <title>منصة AI DevOps - v3.1</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         :root {
@@ -200,7 +200,7 @@
             transition: width 0.5s;
         }
         
-        /* ==================== Charts - FIXED HEIGHT ==================== */
+        /* ==================== Charts ==================== */
         .charts-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
@@ -214,7 +214,7 @@
             padding: 25px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.15);
             border: 1px solid var(--border-color);
-            height: 350px; /* ← ارتفاع ثابت */
+            height: 350px;
             display: flex;
             flex-direction: column;
         }
@@ -224,13 +224,13 @@
             font-size: 1.3em;
             font-weight: 700;
             margin-bottom: 15px;
-            flex-shrink: 0; /* ← لا يتقلص */
+            flex-shrink: 0;
         }
         
         .chart-container {
-            flex: 1; /* ← يأخذ باقي المساحة */
+            flex: 1;
             position: relative;
-            min-height: 0; /* ← مهم للـ flex */
+            min-height: 0;
         }
         
         .chart-container canvas {
@@ -306,6 +306,19 @@
             color: var(--text-secondary);
             font-size: 0.9em;
         }
+
+        .service-badge {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.75em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
         
         /* ==================== Notifications ==================== */
         .notifications-container {
@@ -346,13 +359,9 @@
             }
         }
         
-        .notification-icon {
-            font-size: 2em;
-        }
+        .notification-icon { font-size: 2em; }
         
-        .notification-content {
-            flex: 1;
-        }
+        .notification-content { flex: 1; }
         
         .notification-title {
             font-weight: 700;
@@ -399,7 +408,7 @@
                 </div>
                 <div class="header-actions">
                     <button class="theme-toggle" id="themeToggle" title="تبديل الوضع">🌙</button>
-                    <div class="version">v3.0 Pro</div>
+                    <div class="version">v3.1 Pro</div>
                 </div>
             </div>
             <div class="status-bar">
@@ -454,7 +463,7 @@
             </div>
         </div>
         
-        <!-- Charts - ارتفاع ثابت -->
+        <!-- Charts -->
         <h2 class="section-title">📊 الرسوم البيانية</h2>
         <div class="charts-grid">
             <div class="chart-card">
@@ -472,12 +481,19 @@
         </div>
         
         <!-- Services -->
-        <h2 class="section-title">🛠️ الخدمات</h2>
+        <h2 class="section-title">🛠️ الخدمات والأدوات</h2>
         <div class="services-grid">
             <a href="/chat.html" class="service-card">
                 <span class="service-icon">💬</span>
                 <h3 class="service-title">دردشة AI</h3>
-                <p class="service-desc">تحدث مع Claude</p>
+                <p class="service-desc">تحدث مع Claude Agent</p>
+            </a>
+
+            <a href="/tools.html" class="service-card">
+                <span class="service-badge">NEW</span>
+                <span class="service-icon">🔧</span>
+                <h3 class="service-title">إدارة الأدوات</h3>
+                <p class="service-desc">تحكم في الأدوات وتوفير Tokens</p>
             </a>
             
             <a href="/docker.html" class="service-card">
@@ -495,19 +511,25 @@
             <a href="/history.html" class="service-card">
                 <span class="service-icon">📜</span>
                 <h3 class="service-title">السجل</h3>
-                <p class="service-desc">المحادثات</p>
+                <p class="service-desc">سجل المحادثات</p>
+            </a>
+            
+            <a href="http://192.168.100.64:3200" class="service-card" target="_blank">
+                <span class="service-icon">🐙</span>
+                <h3 class="service-title">Gitea</h3>
+                <p class="service-desc">إدارة المستودعات</p>
             </a>
             
             <a href="http://192.168.100.64:3101" class="service-card" target="_blank">
-                <span class="service-icon">📈</span>
+                <span class="service-icon">📊</span>
                 <h3 class="service-title">Grafana</h3>
-                <p class="service-desc">المراقبة</p>
+                <p class="service-desc">لوحات المراقبة</p>
             </a>
             
             <a href="http://192.168.100.64:9190" class="service-card" target="_blank">
-                <span class="service-icon">🎯</span>
+                <span class="service-icon">📈</span>
                 <h3 class="service-title">Prometheus</h3>
-                <p class="service-desc">المقاييس</p>
+                <p class="service-desc">جمع المقاييس</p>
             </a>
         </div>
     </div>
@@ -548,20 +570,6 @@
             
             container.appendChild(notification);
             setTimeout(() => notification.remove(), duration);
-            
-            // Sound
-            const freq = type === 'success' ? 800 : type === 'warning' ? 600 : 400;
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioCtx.createOscillator();
-            oscillator.frequency.value = freq;
-            oscillator.connect(audioCtx.destination);
-            oscillator.start();
-            oscillator.stop(audioCtx.currentTime + 0.1);
-            
-            // Browser notification
-            if (Notification.permission === 'granted') {
-                new Notification(title, { body: message, icon: '🚀' });
-            }
         }
         
         if (Notification.permission === 'default') {
@@ -632,7 +640,7 @@
                     fetch('/api/stats').then(r => r.json())
                 ]);
                 
-                document.getElementById('mainStatus').innerHTML = '<span>✅</span> النظام يعمل';
+                document.getElementById('mainStatus').innerHTML = '<span>✅</span> النظام يعمل بكفاءة';
                 
                 const uptime = Math.floor(stats.uptime);
                 const days = Math.floor(uptime / 86400);
@@ -677,7 +685,7 @@
                     tempChart.data.datasets[0].data.shift();
                 }
                 
-                resourceChart.update('none'); // no animation for performance
+                resourceChart.update('none');
                 tempChart.update('none');
                 
                 // Notifications
@@ -693,7 +701,7 @@
                 lastMemory = parseFloat(memoryMB);
                 
             } catch (error) {
-                document.getElementById('mainStatus').innerHTML = '<span>❌</span> خطأ';
+                document.getElementById('mainStatus').innerHTML = '<span>❌</span> خطأ في الاتصال';
             }
         }
         
@@ -701,7 +709,7 @@
         setInterval(updateStats, 5000);
         
         setTimeout(() => {
-            showNotification('success', 'مرحباً!', 'المنصة جاهزة للاستخدام');
+            showNotification('success', 'مرحباً!', 'AI DevOps Platform v3.1 جاهزة للاستخدام');
         }, 1000);
     </script>
 </body>
