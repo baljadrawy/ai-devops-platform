@@ -1,0 +1,22 @@
+{
+  "name": "unified-ai-platform",
+  "version": "3.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node backend/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "better-sqlite3": "^12.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "dockerode": "^4.0.2",
+    "mysql2": "^3.11.5",
+    "pg": "^8.13.1",
+    "mongodb": "^6.11.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "esprima": "^4.0.1",
+    "eslint": "^8.57.0"
+  }
+}

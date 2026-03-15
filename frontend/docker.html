@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        h1 { color: #667eea; font-size: 2em; }
+        .back-btn {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            text-decoration: none;
+            transition: 0.3s;
+        }
+        .back-btn:hover { opacity: 0.8; }
+        .refresh-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        .refresh-btn:hover { opacity: 0.8; }
+        .containers {
+            display: grid;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .container-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            border-left: 4px solid #667eea;
+        }
+        .container-card.running { border-left-color: #10b981; }
+        .container-card.stopped { border-left-color: #ef4444; }
+        .container-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .container-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+        }
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .status-badge.running { background: #10b981; color: white; }
+        .status-badge.stopped { background: #ef4444; color: white; }
+        .container-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .action-btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: 0.3s;
+        }
+        .action-btn.start { background: #10b981; color: white; }
+        .action-btn.stop { background: #ef4444; color: white; }
+        .action-btn.restart { background: #f59e0b; color: white; }
+        .action-btn:hover { opacity: 0.8; }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐳 إدارة Docker</h1>
+            <div style="display: flex; gap: 10px;">
+                <button class="refresh-btn" onclick="loadContainers()">🔄 تحديث</button>
+                <a href="/" class="back-btn">← الرئيسية</a>
+            </div>
+        </div>
+        
+        <div id="containers" class="loading">
+            ⏳ جاري تحميل الحاويات...
+        </div>
+    </div>
+    
+    <script>
+        async function loadContainers() {
+            const containersDiv = document.getElementById('containers');
+            containersDiv.innerHTML = '<div class="loading">⏳ جاري التحميل...</div>';
+            
+            try {
+                const response = await fetch('/api/docker/containers');
+                const data = await response.json();
+                
+                if (!data.success || data.data.length === 0) {
+                    containersDiv.innerHTML = '<div class="loading">لا توجد حاويات</div>';
+                    return;
+                }
+                
+                containersDiv.innerHTML = '';
+                containersDiv.className = 'containers';
+                
+                data.data.forEach(container => {
+                    const card = document.createElement('div');
+                    card.className = `container-card ${container.state}`;
+                    card.innerHTML = `
+                        <div class="container-header">
+                            <div class="container-name">${container.name}</div>
+                            <span class="status-badge ${container.state}">
+                                ${container.state === 'running' ? '✅ يعمل' : '⛔ متوقف'}
+                            </span>
+                        </div>
+                        <div class="container-info">
+                            <div>🖼️ الصورة: ${container.image}</div>
+                            <div>🆔 ID: ${container.id}</div>
+                            <div>📊 الحالة: ${container.status}</div>
+                        </div>
+                        <div class="actions">
+                            ${container.state !== 'running' ? 
+                                `<button class="action-btn start" onclick="containerAction('start', '${container.id}')">▶️ تشغيل</button>` : 
+                                `<button class="action-btn stop" onclick="containerAction('stop', '${container.id}')">⏸️ إيقاف</button>`
+                            }
+                            <button class="action-btn restart" onclick="containerAction('restart', '${container.id}')">🔄 إعادة تشغيل</button>
+                        </div>
+                    `;
+                    containersDiv.appendChild(card);
+                });
+                
+            } catch (error) {
+                containersDiv.innerHTML = `<div class="loading">❌ خطأ: ${error.message}</div>`;
+            }
+        }
+        
+        async function containerAction(action, id) {
+            if (!confirm(`هل أنت متأكد من ${action === 'start' ? 'تشغيل' : action === 'stop' ? 'إيقاف' : 'إعادة تشغيل'} هذه الحاوية؟`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/docker/${action}/${id}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ تم بنجاح!');
+                    loadContainers();
+                } else {
+                    alert('❌ خطأ: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ خطأ: ' + error.message);
+            }
+        }
+        
+        loadContainers();
+        setInterval(loadContainers, 10000); // تحديث كل 10 ثواني
+    </script>
+</body>
+</html>

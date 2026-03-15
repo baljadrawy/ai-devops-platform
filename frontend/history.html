@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سجل المحادثات</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        h1 { color: #667eea; font-size: 2em; }
+        .back-btn {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            text-decoration: none;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            background: white;
+        }
+        .tab.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .sessions-list {
+            display: grid;
+            gap: 15px;
+        }
+        .session-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: 0.3s;
+            border-left: 4px solid #667eea;
+        }
+        .session-card:hover {
+            background: #e9ecef;
+            transform: translateX(-5px);
+        }
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .session-id {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        .session-info {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .delete-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .delete-btn:hover { opacity: 0.8; }
+        .messages {
+            display: grid;
+            gap: 15px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+        .message {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .message.user { border-left-color: #10b981; }
+        .message.assistant { border-left-color: #667eea; }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .message-role {
+            font-weight: bold;
+        }
+        .message.user .message-role { color: #10b981; }
+        .message.assistant .message-role { color: #667eea; }
+        .message-content {
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+        }
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📜 سجل المحادثات</h1>
+            <a href="/" class="back-btn">← الرئيسية</a>
+        </div>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="showSessions()">الجلسات</div>
+            <div class="tab" onclick="showMessages('default')">المحادثة الحالية</div>
+        </div>
+        
+        <div id="content" class="loading">⏳ جاري التحميل...</div>
+    </div>
+    
+    <script>
+        let currentView = 'sessions';
+        
+        async function showSessions() {
+            currentView = 'sessions';
+            updateTabs();
+            
+            const content = document.getElementById('content');
+            content.innerHTML = '<div class="loading">⏳ جاري التحميل...</div>';
+            
+            try {
+                const response = await fetch('/api/history/sessions');
+                const data = await response.json();
+                
+                if (!data.sessions || data.sessions.length === 0) {
+                    content.innerHTML = '<div class="empty">لا توجد محادثات محفوظة</div>';
+                    return;
+                }
+                
+                content.className = 'sessions-list';
+                content.innerHTML = '';
+                
+                data.sessions.forEach(session => {
+                    const card = document.createElement('div');
+                    card.className = 'session-card';
+                    
+                    const lastDate = new Date(session.last_message);
+                    const firstDate = new Date(session.first_message);
+                    
+                    card.innerHTML = `
+                        <div class="session-header">
+                            <div class="session-id">📁 ${session.session_id}</div>
+                            <button class="delete-btn" onclick="deleteSession('${session.session_id}', event)">
+                                🗑️ حذف
+                            </button>
+                        </div>
+                        <div class="session-info">
+                            💬 ${session.message_count} رسالة
+                            | 📅 آخر نشاط: ${lastDate.toLocaleDateString('ar-SA')} ${lastDate.toLocaleTimeString('ar-SA')}
+                        </div>
+                    `;
+                    
+                    card.onclick = (e) => {
+                        if (!e.target.classList.contains('delete-btn')) {
+                            showMessages(session.session_id);
+                        }
+                    };
+                    
+                    content.appendChild(card);
+                });
+                
+            } catch (error) {
+                content.innerHTML = `<div class="empty">❌ خطأ: ${error.message}</div>`;
+            }
+        }
+        
+        async function showMessages(sessionId) {
+            currentView = 'messages';
+            updateTabs();
+            
+            const content = document.getElementById('content');
+            content.innerHTML = '<div class="loading">⏳ جاري التحميل...</div>';
+            
+            try {
+                const response = await fetch(`/api/history?sessionId=${sessionId}&limit=100`);
+                const data = await response.json();
+                
+                if (!data.messages || data.messages.length === 0) {
+                    content.innerHTML = '<div class="empty">لا توجد رسائل في هذه الجلسة</div>';
+                    return;
+                }
+                
+                content.className = 'messages';
+                content.innerHTML = '';
+                
+                data.messages.forEach(msg => {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${msg.role}`;
+                    
+                    const date = new Date(msg.timestamp);
+                    
+                    messageDiv.innerHTML = `
+                        <div class="message-header">
+                            <span class="message-role">
+                                ${msg.role === 'user' ? '👤 أنت' : '🤖 Claude'}
+                            </span>
+                            <span>${date.toLocaleString('ar-SA')}</span>
+                        </div>
+                        <div class="message-content">${msg.content}</div>
+                    `;
+                    
+                    content.appendChild(messageDiv);
+                });
+                
+                content.scrollTop = content.scrollHeight;
+                
+            } catch (error) {
+                content.innerHTML = `<div class="empty">❌ خطأ: ${error.message}</div>`;
+            }
+        }
+        
+        async function deleteSession(sessionId, event) {
+            event.stopPropagation();
+            
+            if (!confirm(`هل أنت متأكد من حذف جلسة "${sessionId}"؟`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/history/${sessionId}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ تم حذف ${data.deleted} رسالة`);
+                    showSessions();
+                }
+            } catch (error) {
+                alert('❌ خطأ: ' + error.message);
+            }
+        }
+        
+        function updateTabs() {
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach((tab, index) => {
+                if ((index === 0 && currentView === 'sessions') || 
+                    (index === 1 && currentView === 'messages')) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+        }
+        
+        showSessions();
+    </script>
+</body>
+</html>
