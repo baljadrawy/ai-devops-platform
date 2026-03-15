@@ -360,3 +360,55 @@ app.listen(PORT, '0.0.0.0', () => {
     telegram.sendAlert('success', '🚀 النظام', 'v3.1 بدأت بنجاح!');
   }
 });
+
+// ==================== Prometheus Metrics ====================
+app.get('/metrics', (req, res) => {
+  const memStats = memory.getStats();
+  const toolsStats = toolsManager.getSummary();
+  
+  let metrics = `# HELP ai_agent_tokens_used_total Total tokens used
+# TYPE ai_agent_tokens_used_total counter
+ai_agent_tokens_used_total ${memStats.total_tokens}
+
+# HELP ai_agent_cache_hits_total Cache hits
+# TYPE ai_agent_cache_hits_total counter
+ai_agent_cache_hits_total ${tokenOptimizer.cache.size}
+
+# HELP ai_agent_tools_enabled Number of enabled tools
+# TYPE ai_agent_tools_enabled gauge
+ai_agent_tools_enabled ${toolsStats.enabled}
+
+# HELP ai_agent_uptime_seconds Uptime in seconds
+# TYPE ai_agent_uptime_seconds gauge
+ai_agent_uptime_seconds ${process.uptime()}
+`;
+
+  res.set('Content-Type', 'text/plain');
+  res.send(metrics);
+});
+
+// ==================== Prometheus Metrics ====================
+app.get('/metrics', (req, res) => {
+  const memStats = memory.getStats();
+  const toolsStats = toolsManager.getSummary();
+  
+  let metrics = `# HELP ai_agent_tokens_used_total Total tokens used
+# TYPE ai_agent_tokens_used_total counter
+ai_agent_tokens_used_total ${memStats.total_tokens}
+
+# HELP ai_agent_cache_hits_total Cache hits
+# TYPE ai_agent_cache_hits_total counter
+ai_agent_cache_hits_total ${tokenOptimizer.cache.size}
+
+# HELP ai_agent_tools_enabled Number of enabled tools
+# TYPE ai_agent_tools_enabled gauge
+ai_agent_tools_enabled ${toolsStats.enabled}
+
+# HELP ai_agent_uptime_seconds Uptime in seconds
+# TYPE ai_agent_uptime_seconds gauge
+ai_agent_uptime_seconds ${process.uptime()}
+`;
+
+  res.set('Content-Type', 'text/plain');
+  res.send(metrics);
+});

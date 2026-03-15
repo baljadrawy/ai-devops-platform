@@ -1,0 +1,120 @@
+{
+  "dashboard": {
+    "title": "🥧 Raspberry Pi Health Monitor",
+    "panels": [
+      {
+        "title": "🌡️ CPU Temperature",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "pi_cpu_temperature_celsius",
+            "legendFormat": "CPU Temp"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 60, "color": "yellow" },
+                { "value": 70, "color": "red" }
+              ]
+            },
+            "max": 85
+          }
+        }
+      },
+      {
+        "title": "💻 CPU Usage",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+        "targets": [
+          {
+            "expr": "pi_cpu_usage_percent"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 60, "color": "yellow" },
+                { "value": 80, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "💾 Memory Usage",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "pi_memory_usage_percent"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 85, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "💽 Disk Usage",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+        "targets": [
+          {
+            "expr": "pi_disk_usage_percent"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 80, "color": "yellow" },
+                { "value": 90, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "📈 System Metrics Over Time",
+        "type": "graph",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "pi_cpu_usage_percent",
+            "legendFormat": "CPU %"
+          },
+          {
+            "expr": "pi_memory_usage_percent",
+            "legendFormat": "Memory %"
+          },
+          {
+            "expr": "pi_cpu_temperature_celsius",
+            "legendFormat": "Temp °C"
+          }
+        ]
+      }
+    ],
+    "refresh": "5s"
+  }
+}

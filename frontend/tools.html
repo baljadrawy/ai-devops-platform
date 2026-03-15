@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة الأدوات - AI DevOps</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .header h1 { color: #667eea; font-size: 2.5em; margin-bottom: 10px; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-card h3 { color: #666; font-size: 0.9em; margin-bottom: 10px; }
+        .stat-card .value { font-size: 2.5em; font-weight: bold; color: #667eea; }
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .tool-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        .tool-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .tool-card.enabled { border-left: 5px solid #4CAF50; }
+        .tool-card.disabled { border-left: 5px solid #f44336; opacity: 0.7; }
+        .tool-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .tool-name { font-size: 1.3em; font-weight: bold; color: #333; }
+        .tool-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .tool-badge.active { background: #4CAF50; color: white; }
+        .tool-badge.inactive { background: #f44336; color: white; }
+        .tool-description { color: #666; margin-bottom: 15px; line-height: 1.6; }
+        .toggle-button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .toggle-button.enable { background: #4CAF50; color: white; }
+        .toggle-button.enable:hover { background: #45a049; }
+        .toggle-button.disable { background: #f44336; color: white; }
+        .toggle-button.disable:hover { background: #da190b; }
+        .toggle-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .back-btn {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+            font-weight: bold;
+        }
+        .notification.show { display: block; animation: slideDown 0.3s ease; }
+        @keyframes slideDown {
+            from { top: -50px; opacity: 0; }
+            to { top: 20px; opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 إدارة الأدوات</h1>
+            <p>تحكم في الأدوات المتاحة لتوفير Tokens وتحسين الأداء</p>
+            <a href="/" class="back-btn">← العودة للرئيسية</a>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>الأدوات المفعّلة</h3>
+                <div class="value" id="enabledCount">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>إجمالي الأدوات</h3>
+                <div class="value" id="totalCount">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Tokens موفرة</h3>
+                <div class="value" id="tokensSaved">0</div>
+            </div>
+        </div>
+
+        <div class="tools-grid" id="toolsGrid">
+            <p style="color: white; text-align: center;">جاري التحميل...</p>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script>
+        const toolsInfo = {
+            pi_control: { name: 'التحكم في Raspberry Pi', description: 'معلومات النظام، CPU، Memory، Temperature', icon: '🥧' },
+            docker: { name: 'إدارة Docker', description: 'إدارة الحاويات والمراقبة', icon: '🐳' },
+            filesystem: { name: 'نظام الملفات', description: 'قراءة وكتابة الملفات', icon: '📁' },
+            database: { name: 'قواعد البيانات', description: 'PostgreSQL, MySQL, MongoDB', icon: '🗄️' },
+            code_analysis: { name: 'تحليل الأكواد', description: 'فحص وتحليل الأكواد', icon: '🔍' },
+            git: { name: 'Git Integration', description: 'عمليات Git و GitHub', icon: '🐙' }
+        };
+
+        // Map display names to tool IDs
+        const nameToId = {
+            'Raspberry Pi Control': 'pi_control',
+            'Docker Management': 'docker',
+            'FileSystem Tools': 'filesystem',
+            'Database Tools': 'database',
+            'Code Analysis': 'code_analysis',
+            'Git Integration': 'git'
+        };
+
+        async function loadTools() {
+            try {
+                const response = await fetch('/api/tools');
+                const data = await response.json();
+                
+                document.getElementById('enabledCount').textContent = data.enabled;
+                document.getElementById('totalCount').textContent = data.total;
+                document.getElementById('tokensSaved').textContent = data.stats?.tokensSaved || 0;
+
+                const toolsGrid = document.getElementById('toolsGrid');
+                toolsGrid.innerHTML = '';
+
+                // Get enabled tool IDs from display names
+                const enabledToolIds = data.list.map(displayName => nameToId[displayName]);
+
+                // Show all tools
+                for (const [toolId, info] of Object.entries(toolsInfo)) {
+                    const isEnabled = enabledToolIds.includes(toolId);
+                    const card = document.createElement('div');
+                    card.className = `tool-card ${isEnabled ? 'enabled' : 'disabled'}`;
+                    card.innerHTML = `
+                        <div class="tool-header">
+                            <div class="tool-name">${info.icon} ${info.name}</div>
+                            <div class="tool-badge ${isEnabled ? 'active' : 'inactive'}">
+                                ${isEnabled ? 'مفعّل' : 'معطّل'}
+                            </div>
+                        </div>
+                        <div class="tool-description">${info.description}</div>
+                        <button class="toggle-button ${isEnabled ? 'disable' : 'enable'}" 
+                                data-tool="${toolId}" 
+                                data-enabled="${isEnabled}">
+                            ${isEnabled ? '⛔ تعطيل' : '✅ تفعيل'}
+                        </button>
+                    `;
+                    toolsGrid.appendChild(card);
+                }
+
+                // Add event listeners to all buttons
+                document.querySelectorAll('.toggle-button').forEach(button => {
+                    button.addEventListener('click', handleToggle);
+                });
+
+            } catch (error) {
+                document.getElementById('toolsGrid').innerHTML = 
+                    `<p style="color: white; text-align: center;">❌ خطأ في التحميل: ${error.message}</p>`;
+            }
+        }
+
+        async function handleToggle(event) {
+            const button = event.target;
+            const toolId = button.dataset.tool;
+            const isCurrentlyEnabled = button.dataset.enabled === 'true';
+            const action = isCurrentlyEnabled ? 'disable' : 'enable';
+            
+            // Disable button during request
+            button.disabled = true;
+            button.textContent = '⏳ جاري التحديث...';
+            
+            try {
+                const response = await fetch(`/api/tools/${action}/${toolId}`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification(result.message);
+                    // Reload tools to reflect changes
+                    await loadTools();
+                } else {
+                    showNotification('❌ ' + (result.error || 'حدث خطأ'));
+                    button.disabled = false;
+                    button.textContent = isCurrentlyEnabled ? '⛔ تعطيل' : '✅ تفعيل';
+                }
+            } catch (error) {
+                showNotification('❌ خطأ في الاتصال: ' + error.message);
+                button.disabled = false;
+                button.textContent = isCurrentlyEnabled ? '⛔ تعطيل' : '✅ تفعيل';
+            }
+        }
+
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        // Load tools on page load
+        loadTools();
+
+        // Auto-refresh every 10 seconds
+        setInterval(loadTools, 10000);
+    </script>
+</body>
+</html>
