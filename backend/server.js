@@ -8,6 +8,9 @@ import { CodeAnalysisPlugin } from './plugins/CodeAnalyzer.js';
 import { MemorySystem } from './plugins/MemorySystem.js';
 import { TelegramBotPlugin } from './plugins/TelegramBot.js';
 import { FileSystemPlugin } from './plugins/FileSystemPlugin.js';
+import { TokenOptimizer } from './plugins/TokenOptimizer.js';
+import { RaspberryPiController } from './plugins/RaspberryPiController.js';
+import { ToolsManager } from './plugins/ToolsManager.js';
 
 const app = express();
 app.use(cors());
@@ -24,17 +27,18 @@ const codeAnalyzer = new CodeAnalysisPlugin();
 const memory = new MemorySystem('./data/memory.db');
 const telegram = new TelegramBotPlugin(process.env.TELEGRAM_BOT_TOKEN);
 const filesystem = new FileSystemPlugin();
+const tokenOptimizer = new TokenOptimizer();
+const piController = new RaspberryPiController();
+const toolsManager = new ToolsManager();
 
-// ==================== Memory Management ====================
+// Auto Memory Management
 setInterval(async () => {
   try {
     const stmt = memory.db.prepare('SELECT DISTINCT session_id FROM conversations');
     const sessions = stmt.all();
-    
     for (const {session_id} of sessions) {
       const messages = memory.getRecentMessages(session_id, 100);
       const totalTokens = messages.reduce((sum, msg) => sum + msg.tokens, 0);
-      
       if (totalTokens > 100000) {
         await memory.compressAndGetContext(session_id, 100000);
         console.log(`✅ ضغط جلسة ${session_id}`);
@@ -54,19 +58,19 @@ setInterval(() => {
   }
 }, 86400000);
 
-// ==================== Health & Stats ====================
+// Health & Stats
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
-    version: '3.0.0',
+    version: '3.1.0',
     timestamp: new Date().toISOString(),
     features: {
-      compression: 'active',
-      streaming: 'enabled',
-      autoCleanup: 'enabled',
-      telegram: telegram.enabled ? 'active' : 'disabled',
-      filesystem: 'active'
-    }
+      tokenOptimization: 'active',
+      piControl: 'active',
+      smartTools: 'active',
+      telegram: telegram.enabled ? 'active' : 'disabled'
+    },
+    tools: toolsManager.getSummary()
   });
 });
 
@@ -79,154 +83,136 @@ app.get('/api/stats', (req, res) => {
       total: memStats.total_messages,
       sessions: memStats.total_sessions,
       tokens: memStats.total_tokens
-    }
+    },
+    tools: toolsManager.getSummary()
   });
 });
 
-// ==================== Smart AI Chat with Tools ====================
+// Smart AI Chat with Optimization
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
-    
+
     const userTokens = memory.estimateTokens(message);
     memory.saveMessage(sessionId, 'user', message, userTokens);
-    
+
     const recentMessages = memory.getRecentMessages(sessionId, 10);
-    const conversationHistory = recentMessages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }));
     
-    // ==================== جمع المعلومات من الأدوات ====================
+    // Token Optimization
+    const optimizationResult = tokenOptimizer.optimizeMessages(recentMessages, message);
+    
+    if (optimizationResult.fromCache) {
+      console.log('💰 Cache hit!');
+      return res.json({
+        message: optimizationResult.response,
+        fromCache: true,
+        tokensSaved: userTokens
+      });
+    }
+
+    // Auto-enable tools
+    const autoEnabled = toolsManager.autoEnableByContext(message);
+
+    // Gather context
     let systemContext = '';
-    
-    // معلومات النظام
-    if (/صحة|حالة|status|health/i.test(message)) {
-      const containers = await docker.listContainers({ all: true });
-      const stats = {
-        uptime: process.uptime(),
-        memory: process.memoryUsage()
-      };
-      
-      systemContext += `
-معلومات النظام:
-- الحاويات: ${containers.data?.length || 0}
-- العاملة: ${containers.data?.filter(c => c.state === 'running').length || 0}
-- وقت التشغيل: ${Math.floor(stats.uptime / 60)} دقيقة
-- الذاكرة: ${(stats.memory.rss / 1024 / 1024).toFixed(2)} MB
-`;
-    }
-    
-    // معلومات Docker
-    if (/docker|حاوية/i.test(message)) {
-      const containers = await docker.listContainers({ all: true });
-      systemContext += `
-Docker:
-${containers.data?.map(c => `- ${c.name}: ${c.state === 'running' ? '✅' : '⛔'}`).join('\n') || 'لا توجد'}
-`;
-    }
-    
-    // معلومات قواعد البيانات
-    if (/database|قاعدة/i.test(message)) {
-      const connections = database.getConnections();
-      systemContext += `
-قواعد البيانات:
-${connections.map(c => `- ${c.name} (${c.type})`).join('\n') || 'لا توجد'}
-`;
-    }
-    
-    // بنية المشروع
-    if (/بنية|structure|ملفات|files|مكونات|components|المشروع/i.test(message)) {
-      const structure = filesystem.getProjectStructure();
-      if (structure.success) {
-        systemContext += `
-بنية المشروع:
-- الواجهات: ${structure.data.frontend.join(', ')}
-- Plugins: ${structure.data.plugins.join(', ')}
-- APIs المتاحة (${structure.data.routes.length}):
-${structure.data.routes.slice(0, 15).join('\n')}
-`;
+
+    // Pi Info
+    if (toolsManager.availableTools.pi_control.enabled && /صحة|حالة|status|health/i.test(message)) {
+      const health = await piController.getHealthReport();
+      if (health.success) {
+        systemContext += `\n📊 النظام ${health.data.statusEmoji}\nCPU: ${health.data.metrics.cpu} | Memory: ${health.data.metrics.memory} | Temp: ${health.data.metrics.temperature}`;
       }
     }
-    
-    // قراءة ملف محدد
-    const readFileMatch = message.match(/اقرأ ملف|read file|show file:?\s*(.+)/i);
-    if (readFileMatch) {
-      const filePath = readFileMatch[1].trim();
-      const fileContent = filesystem.readFile(filePath);
-      if (fileContent.success) {
-        systemContext += `
-محتوى ${filePath}:
-\`\`\`
-${fileContent.data.content.substring(0, 3000)}
-${fileContent.data.content.length > 3000 ? '\n... (truncated)' : ''}
-\`\`\`
-الحجم: ${fileContent.data.size} bytes
-`;
+
+    // Docker Info
+    if (toolsManager.availableTools.docker.enabled && /docker|حاوية/i.test(message)) {
+      const containers = await docker.listContainers({ all: true });
+      if (containers.success) {
+        systemContext += `\n🐳 Docker:\n${containers.data?.map(c => `- ${c.name}: ${c.state === 'running' ? '✅' : '⛔'}`).join('\n') || 'لا توجد'}`;
       }
     }
-    
-    // System Prompt الذكي
-    const systemPrompt = `أنت مساعد ذكي ومطور لمنصة AI DevOps v3.0 على Raspberry Pi.
 
-=== قدراتك ===
-✅ قراءة ملفات المشروع
-✅ تعديل وإنشاء ملفات
-✅ فهم بنية المشروع
-✅ إدارة Docker وقواعد البيانات
-✅ تطوير ميزات جديدة
+    // FileSystem
+    if (toolsManager.availableTools.filesystem.enabled) {
+      const readMatch = message.match(/اقرأ ملف|read file:?\s*(.+)/i);
+      if (readMatch) {
+        const filePath = readMatch[1].trim();
+        const fileContent = filesystem.readFile(filePath);
+        if (fileContent.success) {
+          systemContext += `\n\n📄 ${filePath}:\n\`\`\`\n${fileContent.data.content.substring(0, 1500)}\n\`\`\``;
+        }
+      }
+    }
 
-=== معلومات المشروع ===
-المكونات الفعلية:
-- واجهات: index.html, chat.html, docker.html, database.html, history.html
-- Plugins: Docker, Database, Code Analyzer, Telegram Bot, FileSystem
-- الخدمات: PostgreSQL, Grafana, Prometheus
-- الميزات: Dark Mode, Charts, Notifications, Memory System
+    // Optimized System Prompt
+    const systemPrompt = tokenOptimizer.createOptimizedSystemPrompt({
+      hasDocker: toolsManager.availableTools.docker.enabled,
+      hasDatabase: toolsManager.availableTools.database.enabled,
+      hasFiles: toolsManager.availableTools.filesystem.enabled,
+      hasPi: toolsManager.availableTools.pi_control.enabled
+    }) + (systemContext ? `\n\n${systemContext}` : '');
 
-${systemContext}
-
-=== قواعد التطوير ===
-1. عندما يطلب المستخدم تطوير ميزة:
-   - اقرأ الملفات المعنية أولاً
-   - اشرح التغييرات بوضوح
-   - اطلب تأكيد قبل التنفيذ
-   
-2. لتعديل ملف:
-   - أعطي الكود الكامل الجديد
-   - وضّح التغييرات
-   - قل للمستخدم: "لتطبيق التغييرات، استخدم API: POST /api/filesystem/write"
-
-3. لإنشاء ميزة جديدة:
-   - اشرح الخطوات
-   - اعطي الكود
-   - اشرح كيفية التكامل
-
-مهم: لا تنفذ تغييرات بدون تأكيد صريح من المستخدم!
-
-أجب بالعربية بشكل واضح ومفيد.`;
-
+    // Call Claude
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+      max_tokens: 1024,
       system: systemPrompt,
-      messages: conversationHistory
+      messages: optimizationResult.messages
     });
-    
+
     const assistantMessage = response.content[0].text;
     const assistantTokens = memory.estimateTokens(assistantMessage);
-    
+
     memory.saveMessage(sessionId, 'assistant', assistantMessage, assistantTokens);
-    
+    tokenOptimizer.cacheResponse(message, assistantMessage);
+
     res.json({
       message: assistantMessage,
-      usage: response.usage
+      usage: response.usage,
+      autoEnabledTools: autoEnabled
     });
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ==================== FileSystem APIs ====================
+// Pi Control APIs
+app.get('/api/pi/info', async (req, res) => {
+  const result = await piController.getSystemInfo();
+  res.json(result);
+});
+
+app.get('/api/pi/health', async (req, res) => {
+  const result = await piController.getHealthReport();
+  if (result.success && result.data.status === 'critical') {
+    telegram.sendAlert('danger', '🚨 تحذير', result.data.issues.join('\n'));
+  }
+  res.json(result);
+});
+
+app.post('/api/pi/execute', async (req, res) => {
+  const { command } = req.body;
+  const result = await piController.executeCommand(command);
+  res.json(result);
+});
+
+// Tools Management
+app.get('/api/tools', (req, res) => {
+  res.json(toolsManager.getSummary());
+});
+
+app.post('/api/tools/enable/:name', (req, res) => {
+  const result = toolsManager.enableTool(req.params.name);
+  res.json(result);
+});
+
+app.post('/api/tools/disable/:name', (req, res) => {
+  const result = toolsManager.disableTool(req.params.name);
+  res.json(result);
+});
+
+// FileSystem APIs
 app.get('/api/filesystem/structure', (req, res) => {
   const result = filesystem.getProjectStructure();
   res.json(result);
@@ -241,55 +227,33 @@ app.post('/api/filesystem/read', (req, res) => {
 app.post('/api/filesystem/write', (req, res) => {
   const { path, content } = req.body;
   const result = filesystem.writeFile(path, content);
-  
-  if (result.success) {
-    telegram.sendAlert('success', '📝 ملف محدّث', `تم تعديل: ${path}`);
-  }
-  
+  if (result.success) telegram.sendAlert('success', '📝 ملف محدّث', `${path}`);
   res.json(result);
 });
 
 app.post('/api/filesystem/create', (req, res) => {
   const { path, content } = req.body;
   const result = filesystem.createFile(path, content);
-  
-  if (result.success) {
-    telegram.sendAlert('success', '✨ ملف جديد', `تم إنشاء: ${path}`);
-  }
-  
+  if (result.success) telegram.sendAlert('success', '✨ ملف جديد', `${path}`);
   res.json(result);
 });
 
 app.delete('/api/filesystem/delete', (req, res) => {
   const { path } = req.body;
   const result = filesystem.deleteFile(path);
-  
-  if (result.success) {
-    telegram.sendAlert('warning', '🗑️ ملف محذوف', `تم حذف: ${path}`);
-  }
-  
+  if (result.success) telegram.sendAlert('warning', '🗑️ ملف محذوف', `${path}`);
   res.json(result);
 });
 
-app.post('/api/filesystem/execute', async (req, res) => {
-  const { command } = req.body;
-  const result = await filesystem.executeCommand(command);
-  res.json(result);
-});
-
-// ==================== Telegram ====================
+// Telegram
 app.post('/api/telegram/alert', (req, res) => {
   const { type, title, message } = req.body;
-  
-  if (!telegram.enabled) {
-    return res.json({ success: false, error: 'Telegram bot not enabled' });
-  }
-  
+  if (!telegram.enabled) return res.json({ success: false, error: 'Telegram not enabled' });
   telegram.sendAlert(type, title, message);
   res.json({ success: true });
 });
 
-// ==================== Docker ====================
+// Docker
 app.get('/api/docker/containers', async (req, res) => {
   try {
     const result = await docker.listContainers({ all: true });
@@ -303,27 +267,20 @@ app.post('/api/docker/:action/:id', async (req, res) => {
   try {
     const { action, id } = req.params;
     const result = await docker.containerAction(action, id);
-    
     if (result.success) {
-      const actions = { start: 'تشغيل', stop: 'إيقاف', restart: 'إعادة تشغيل' };
-      telegram.sendAlert('success', 'Docker', `تم ${actions[action]} الحاوية`);
+      telegram.sendAlert('success', 'Docker', `${action} → ${id.substring(0, 12)}`);
     }
-    
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ==================== Database ====================
+// Database
 app.post('/api/database/connect', async (req, res) => {
   try {
     const result = await database.connect(req.body);
-    
-    if (result.success) {
-      telegram.sendAlert('success', 'Database', `تم الاتصال بـ ${req.body.name}`);
-    }
-    
+    if (result.success) telegram.sendAlert('success', 'Database', `Connected to ${req.body.name}`);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -343,7 +300,7 @@ app.get('/api/database/connections', (req, res) => {
   res.json({ connections: database.getConnections() });
 });
 
-// ==================== Code Analyzer ====================
+// Code Analyzer
 app.post('/api/code/analyze', async (req, res) => {
   try {
     const result = await codeAnalyzer.analyzeCode(req.body);
@@ -353,12 +310,11 @@ app.post('/api/code/analyze', async (req, res) => {
   }
 });
 
-// ==================== History ====================
+// History
 app.get('/api/history', (req, res) => {
   try {
     const { sessionId = 'default', limit = 50 } = req.query;
     const messages = memory.getRecentMessages(sessionId, parseInt(limit));
-    
     res.json({
       success: true,
       sessionId,
@@ -370,72 +326,19 @@ app.get('/api/history', (req, res) => {
   }
 });
 
-app.get('/api/history/sessions', (req, res) => {
-  try {
-    const stmt = memory.db.prepare(`
-      SELECT 
-        session_id,
-        COUNT(*) as message_count,
-        MAX(timestamp) as last_message,
-        MIN(timestamp) as first_message
-      FROM conversations
-      GROUP BY session_id
-      ORDER BY MAX(timestamp) DESC
-    `);
-    
-    const sessions = stmt.all();
-    res.json({ success: true, total: sessions.length, sessions });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/history/:sessionId', (req, res) => {
-  try {
-    const { sessionId } = req.params;
-    const stmt = memory.db.prepare('DELETE FROM conversations WHERE session_id = ?');
-    const result = stmt.run(sessionId);
-    
-    res.json({ success: true, deleted: result.changes });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ==================== System Monitoring ====================
-let lastStats = { temp: 0, memory: 0, cpu: 0 };
-
+// System Monitoring
 setInterval(async () => {
   try {
-    const stats = {
-      uptime: process.uptime(),
-      memory: process.memoryUsage()
-    };
-    
-    const memoryMB = (stats.memory.rss / 1024 / 1024).toFixed(1);
-    const temp = (45 + Math.random() * 15).toFixed(1);
-    const cpu = Math.floor(Math.random() * 30 + 10);
-    
-    if (parseFloat(temp) > 70 && lastStats.temp <= 70) {
-      telegram.sendAlert('warning', '🌡️ تحذير', `درجة الحرارة: ${temp}°C`);
+    const health = await piController.getHealthReport();
+    if (health.success && health.data.status === 'critical') {
+      telegram.sendAlert('danger', '🔴 حالة حرجة', health.data.issues.join('\n'));
     }
-    
-    if (parseFloat(memoryMB) > 400 && lastStats.memory <= 400) {
-      telegram.sendAlert('warning', '💾 تنبيه', `الذاكرة: ${memoryMB} MB`);
-    }
-    
-    if (cpu > 80 && lastStats.cpu <= 80) {
-      telegram.sendAlert('danger', '⚡ تحذير', `CPU: ${cpu}%`);
-    }
-    
-    lastStats = { temp: parseFloat(temp), memory: parseFloat(memoryMB), cpu };
-    
   } catch (error) {
     console.error('Monitoring error:', error);
   }
-}, 30000);
+}, 60000);
 
-// ==================== Static Files ====================
+// Static Files
 app.use(express.static('frontend'));
 app.get('/', (req, res) => {
   res.sendFile('/app/frontend/index.html');
@@ -445,14 +348,15 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════════════════╗
-║   🚀 Unified AI Platform v3.0                      ║
+║   🚀 AI Platform v3.1 - OPTIMIZED                   ║
 ║   📡 Server: http://0.0.0.0:${PORT}                     ║
-║   🤖 Telegram: ${telegram.enabled ? 'Active ✅' : 'Disabled ❌'}                     ║
-║   📁 FileSystem Tools: Active ✅                    ║
+║   💰 Token Optimizer: Active ✅                     ║
+║   🥧 Pi Controller: Active ✅                       ║
+║   🔧 Tools: ${toolsManager.getSummary().enabled}/${toolsManager.getSummary().total} enabled                            ║
 ╚══════════════════════════════════════════════════════╝
   `);
-  
+
   if (telegram.enabled) {
-    telegram.sendAlert('success', '🚀 النظام', 'المنصة بدأت بنجاح مع FileSystem Tools!');
+    telegram.sendAlert('success', '🚀 النظام', 'v3.1 بدأت بنجاح!');
   }
 });
