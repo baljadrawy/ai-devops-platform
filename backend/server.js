@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { DockerManager } from './plugins/DockerManager.js';
 import { DatabaseManager } from './plugins/DatabaseManager.js';
@@ -13,10 +15,65 @@ import { TokenOptimizer } from './plugins/TokenOptimizer.js';
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(compression({ threshold: 1024, level: 6 }));
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY
 });
+
+// ==================== 🔒 Security Middleware ====================
+/**
+ * التحقق من مفتاح API للمسارات الحساسة
+ */
+function requireAuth(req, res, next) {
+  // السماح بـ health check بدون مصادقة
+  if (req.path === '/api/health' || req.path === '/api/stats') {
+    return next();
+  }
+
+  const apiKey = req.headers['x-api-key'] || req.query.apiKey;
+  const expectedKey = process.env.API_KEY;
+
+  if (!expectedKey) {
+    console.warn('⚠️ تحذير: API_KEY غير مضبوطة في .env');
+    return res.status(500).json({
+      error: '❌ خادم غير مكتمل التكوين'
+    });
+  }
+
+  if (!apiKey || apiKey !== expectedKey) {
+    return res.status(401).json({
+      error: '❌ مفتاح API غير صحيح',
+      hint: 'استخدم header: X-API-Key'
+    });
+  }
+
+  next();
+}
+
+// ==================== 🚦 Rate Limiting ====================
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // دقيقة واحدة
+  max: 100, // 100 طلب لكل IP
+  message: { error: '❌ طلبات كثيرة جداً، حاول لاحقاً' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/api/health'
+});
+
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20, // 20 طلب فقط للـ chat
+  message: { error: '❌ طلبات متكررة كثيرة، انتظر دقيقة' }
+});
+
+const fileLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 50, // 50 طلب للملفات
+  message: { error: '❌ عمليات كثيرة على الملفات' }
+});
+
+app.use('/api/', generalLimiter);
 
 // Initialize plugins
 const docker = new DockerManager();
@@ -86,9 +143,14 @@ app.get('/api/stats', (req, res) => {
 });
 
 // ==================== Smart AI Chat with Tools ====================
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', chatLimiter, requireAuth, async (req, res) => {
   try {
     const { message, sessionId = 'default' } = req.body;
+
+    // ✅ فحص المدخلات
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: '❌ الرسالة فارغة' });
+    }
 // ✅ فحص Cache
     const cacheResult = tokenOptimizer.checkCache(message);
     if (cacheResult.fromCache) {
@@ -241,70 +303,105 @@ ${systemContext}
 });
 
 // ==================== FileSystem APIs ====================
-app.get('/api/filesystem/structure', (req, res) => {
+app.get('/api/filesystem/structure', requireAuth, (req, res) => {
   const result = filesystem.getProjectStructure();
   res.json(result);
 });
 
-app.post('/api/filesystem/read', (req, res) => {
+app.post('/api/filesystem/read', fileLimiter, requireAuth, (req, res) => {
   const { path } = req.body;
+
+  // ✅ فحص المدخلات
+  if (!path || typeof path !== 'string') {
+    return res.status(400).json({ error: '❌ مسار غير صحيح' });
+  }
+
   const result = filesystem.readFile(path);
   res.json(result);
 });
 
-app.post('/api/filesystem/write', (req, res) => {
+app.post('/api/filesystem/write', fileLimiter, requireAuth, (req, res) => {
   const { path, content } = req.body;
+
+  // ✅ فحص المدخلات
+  if (!path || !content) {
+    return res.status(400).json({ error: '❌ مسار أو محتوى فارغ' });
+  }
+
   const result = filesystem.writeFile(path, content);
-  
+
   if (result.success) {
     telegram.sendAlert('success', '📝 ملف محدّث', `تم تعديل: ${path}`);
   }
-  
+
   res.json(result);
 });
 
-app.post('/api/filesystem/create', (req, res) => {
+app.post('/api/filesystem/create', fileLimiter, requireAuth, (req, res) => {
   const { path, content } = req.body;
+
+  // ✅ فحص المدخلات
+  if (!path || !content) {
+    return res.status(400).json({ error: '❌ مسار أو محتوى فارغ' });
+  }
+
   const result = filesystem.createFile(path, content);
-  
+
   if (result.success) {
     telegram.sendAlert('success', '✨ ملف جديد', `تم إنشاء: ${path}`);
   }
-  
+
   res.json(result);
 });
 
-app.delete('/api/filesystem/delete', (req, res) => {
+app.delete('/api/filesystem/delete', fileLimiter, requireAuth, (req, res) => {
   const { path } = req.body;
+
+  // ✅ فحص المدخلات
+  if (!path || typeof path !== 'string') {
+    return res.status(400).json({ error: '❌ مسار غير صحيح' });
+  }
+
   const result = filesystem.deleteFile(path);
-  
+
   if (result.success) {
     telegram.sendAlert('warning', '🗑️ ملف محذوف', `تم حذف: ${path}`);
   }
-  
+
   res.json(result);
 });
 
-app.post('/api/filesystem/execute', async (req, res) => {
+app.post('/api/filesystem/execute', fileLimiter, requireAuth, async (req, res) => {
   const { command } = req.body;
+
+  // ✅ فحص المدخلات
+  if (!command || typeof command !== 'string' || command.trim().length === 0) {
+    return res.status(400).json({ error: '❌ أمر فارغ' });
+  }
+
   const result = await filesystem.executeCommand(command);
   res.json(result);
 });
 
 // ==================== Telegram ====================
-app.post('/api/telegram/alert', (req, res) => {
+app.post('/api/telegram/alert', requireAuth, (req, res) => {
   const { type, title, message } = req.body;
-  
+
+  // ✅ فحص المدخلات
+  if (!type || !title || !message) {
+    return res.status(400).json({ error: '❌ بيانات ناقصة' });
+  }
+
   if (!telegram.enabled) {
     return res.json({ success: false, error: 'Telegram bot not enabled' });
   }
-  
+
   telegram.sendAlert(type, title, message);
   res.json({ success: true });
 });
 
 // ==================== Docker ====================
-app.get('/api/docker/containers', async (req, res) => {
+app.get('/api/docker/containers', requireAuth, async (req, res) => {
   try {
     const result = await docker.listContainers({ all: true });
     res.json(result);
@@ -313,7 +410,7 @@ app.get('/api/docker/containers', async (req, res) => {
   }
 });
 
-app.post('/api/docker/:action/:id', async (req, res) => {
+app.post('/api/docker/:action/:id', requireAuth, async (req, res) => {
   try {
     const { action, id } = req.params;
     const result = await docker.containerAction(action, id);
@@ -330,22 +427,34 @@ app.post('/api/docker/:action/:id', async (req, res) => {
 });
 
 // ==================== Database ====================
-app.post('/api/database/connect', async (req, res) => {
+app.post('/api/database/connect', requireAuth, async (req, res) => {
   try {
-    const result = await database.connect(req.body);
-    
-    if (result.success) {
-      telegram.sendAlert('success', 'Database', `تم الاتصال بـ ${req.body.name}`);
+    // ✅ فحص المدخلات
+    const { type, name } = req.body;
+    if (!type || !name) {
+      return res.status(400).json({ error: '❌ نوع البيانات والاسم مطلوبان' });
     }
-    
+
+    const result = await database.connect(req.body);
+
+    if (result.success) {
+      telegram.sendAlert('success', 'Database', `تم الاتصال بـ ${name}`);
+    }
+
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/database/query', async (req, res) => {
+app.post('/api/database/query', requireAuth, async (req, res) => {
   try {
+    // ✅ فحص المدخلات
+    const { name, sql } = req.body;
+    if (!name || !sql) {
+      return res.status(400).json({ error: '❌ الاسم والاستعلام مطلوبان' });
+    }
+
     const result = await database.query(req.body);
     res.json(result);
   } catch (error) {
@@ -353,7 +462,7 @@ app.post('/api/database/query', async (req, res) => {
   }
 });
 
-app.get('/api/database/connections', (req, res) => {
+app.get('/api/database/connections', requireAuth, (req, res) => {
   res.json({ connections: database.getConnections() });
 });
 
@@ -456,17 +565,57 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════════════════╗
 ║   🚀 Unified AI Platform v3.0                      ║
 ║   📡 Server: http://0.0.0.0:${PORT}                     ║
 ║   🤖 Telegram: ${telegram.enabled ? 'Active ✅' : 'Disabled ❌'}                     ║
 ║   📁 FileSystem Tools: Active ✅                    ║
+║   🔒 Security: Enabled ✅                           ║
 ╚══════════════════════════════════════════════════════╝
   `);
-  
+
   if (telegram.enabled) {
     telegram.sendAlert('success', '🚀 النظام', 'المنصة بدأت بنجاح مع FileSystem Tools!');
   }
+});
+
+// ==================== 🛑 Graceful Shutdown ====================
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 استقبال SIGTERM - بدء الإيقاف الآمن...');
+
+  // 1️⃣ إيقاف استقبال طلبات جديدة
+  server.close(() => {
+    console.log('✅ تم إغلاق الخادم');
+  });
+
+  // 2️⃣ إغلاق اتصالات قواعد البيانات
+  for (const [name] of database.connections) {
+    try {
+      await database.disconnect({ name });
+      console.log(`✅ تم فصل قاعدة البيانات: ${name}`);
+    } catch (error) {
+      console.error(`❌ خطأ في فصل ${name}:`, error.message);
+    }
+  }
+
+  // 3️⃣ إغلاق ذاكرة SQLite
+  try {
+    memory.close();
+    console.log('✅ تم إغلاق نظام الذاكرة');
+  } catch (error) {
+    console.error('❌ خطأ في إغلاق الذاكرة:', error.message);
+  }
+
+  // 4️⃣ الانتظار 10 ثواني ثم الإغلاق القسري
+  setTimeout(() => {
+    console.error('❌ لم يتم الإغلاق في الوقت المحدد - إغلاق قسري');
+    process.exit(1);
+  }, 10000);
+});
+
+process.on('SIGINT', () => {
+  console.log('\n🛑 تم الضغط على Ctrl+C');
+  process.emit('SIGTERM');
 });
